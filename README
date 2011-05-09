@@ -17,3 +17,6 @@ The filenames should look like:
 /etc/puppet/modules/elasticsearch/files/elasticsearch-${version}.tar.gz 
 - and -
 /etc/puppet/modules/elasticsearch/files/elasticsearch-servicewrapper.tar.gz
+
+For additional information see my blog post here:
+http://www.visibiz.com/blog/hunter/elasticsearch/elasticsearch-puppet-module

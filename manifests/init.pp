@@ -5,18 +5,18 @@
 # Usage:
 # include elasticsearch
 
-class elasticsearch($version) {
+class elasticsearch($version = "0.15.2", $xmx = "2048") {
       $esBasename       = "elasticsearch"
       $esName           = "${esBasename}-${version}"
       $esFile           = "${esName}.tar.gz"
       $esServiceName    = "${esBasename}-servicewrapper"
-      $esServiceFile    = "${esServiceName}.tgz"
+      $esServiceFile    = "${esServiceName}.tar.gz"
       $esPath           = "${ebs1}/usr/local/${esName}"
       $esPathLink       = "/usr/local/${esBasename}"
       $esDataPath       = "${ebs1}/var/lib/${esBasename}"
       $esLogPath        = "${ebs1}/var/log/${esBasename}"
       $esXms            = "256"
-      $esXmx            = "2048"
+      $esXmx            = "${xmx}"
       $cluster          = "${esBasename}"
       $esTCPPortRange   = "9300-9399"
       $esHTTPPortRange  = "9200-9299"
@@ -27,7 +27,7 @@ class elasticsearch($version) {
                comment => "Elasticsearch user created by puppet",
                managehome => true,
                shell   => "/bin/false",          
-               require => lvmconfig[$ebs1]
+               require => [Package["sun-java6-jre"], lvmconfig[$ebs1]]
      }
      
      # Set this users file handle limits (ES uses a shit ton of file handles)
@@ -64,17 +64,27 @@ class elasticsearch($version) {
              path => "/bin:/usr/bin",
              command => "mkdir -p $esPath && tar -xzf /tmp/$esFile -C /tmp && sudo -u$esBasename cp -rf /tmp/$esName/. $esPath/. && rm -rf /tmp/$esBasename*", 
              unless  => "test -f $esPath/bin/elasticsearch",
-             require => file["/tmp/$esFile"],
+             require => File["/tmp/$esFile"],
              notify => Service["$esBasename"],
       }
-      
+
+      ## Note: this is a bit hackish, need to stop the old elasticsearch when upgrading
+      exec { "stop-elasticsearch-version-change":
+           command => "service elasticsearch stop",
+           unless => "ps aux | grep ${esName} | grep -v grep",
+           onlyif => "ps aux | grep ${esBasename} | grep -v grep",
+           require => Exec["elasticsearch-package"],
+           notify => Service["$esBasename"]
+      }
+
       # Create link to /usr/local/<esBasename> which will be the current version
       file { "$esPathLink":
            ensure => link,
            target => "$esPath",
-           require => File["$esPath"]
+           require => Exec["stop-elasticsearch-version-change"] 
+           
       }
-      
+  
       # Ensure the data path is created
       file { "$esDataPath":
            ensure => directory,
@@ -84,17 +94,25 @@ class elasticsearch($version) {
            recurse => true           
       }
 
+      # Ensure the data path is created
+      file { "/var/lib/${esBasename}":
+           ensure => link,
+           target => "${esDataPath}",
+           require => File["$esDataPath"],
+      }
+
       # Ensure the link to the data path is set
       file { "$esPath/data":
            ensure => link,
+           force => true,
            target => "$esDataPath",
            require => File["$esDataPath"]
       }
-
+      
       # Symlink config to /etc
       file { "/etc/$esBasename":
              ensure => link,
-             target => "$esPathLink",
+             target => "$esPathLink/config",
              require => Exec["elasticsearch-package"],
       }
 
@@ -143,9 +161,9 @@ class elasticsearch($version) {
       file { "/etc/init.d/elasticsearch":
              ensure => link,
              target => "$esPath/bin/service/./elasticsearch",
-             require => File["$esPath/bin/service/elasticsearch"]
+             require => [Exec["stop-elasticsearch-version-change"], File["$esPath/bin/service/elasticsearch"]]
       }
-
+      
       # Ensure logging directory
       file { "$esLogPath":
            owner     => "$esBasename",
@@ -161,16 +179,19 @@ class elasticsearch($version) {
            target => "$esLogPath",
            require => [exec["elasticsearch-package"], File["/etc/init.d/$esBasename"]]
       }
-      
-      notify {"finished":
-            message => "Elastic search $esVersion installed",
-            require => File["/var/log/$esBasename"]
+
+      file { "$esPath/logs":
+           ensure => link,
+           target => "/var/log/$esBasename",
+           force => true,
+           require => File["/var/log/$esBasename"]
       }
-      
+            
       # Ensure the service is running
       service { "$esBasename":
             ensure => running,
-            require => Notify["finished"]
+            hasrestart => true,
+            require => File["/var/log/$esBasename"]
       }
 
 }

@@ -177,7 +177,7 @@ class elasticsearch($version = "0.15.2", $xmx = "2048") {
       file { "/var/log/$esBasename":
            ensure => link,
            target => "$esLogPath",
-           require => [exec["elasticsearch-package"], File["/etc/init.d/$esBasename"]]
+           require => [File["${esLogPath}"], File["/etc/init.d/$esBasename"]]
       }
 
       file { "$esPath/logs":
@@ -191,7 +191,7 @@ class elasticsearch($version = "0.15.2", $xmx = "2048") {
       service { "$esBasename":
             ensure => running,
             hasrestart => true,
-            require => File["/var/log/$esBasename"]
+            require => File["$esPath/logs"]
       }
 
 }

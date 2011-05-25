@@ -27,7 +27,8 @@ class elasticsearch($version = "0.15.2", $xmx = "2048") {
                comment => "Elasticsearch user created by puppet",
                managehome => true,
                shell   => "/bin/false",          
-               require => [Package["sun-java6-jre"], lvmconfig[$ebs1]]
+               require => [Package["sun-java6-jre"], lvmconfig[$ebs1]],
+               uid => 901
      }
      
      # Set this users file handle limits (ES uses a shit ton of file handles)

@@ -5,7 +5,7 @@
 # Usage:
 # include elasticsearch
 
-class elasticsearch($version = "0.15.2", $xmx = "2048") {
+class elasticsearch($version = "0.15.2", $xmx = "2048m") {
       $esBasename       = "elasticsearch"
       $esName           = "${esBasename}-${version}"
       $esFile           = "${esName}.tar.gz"
@@ -14,13 +14,19 @@ class elasticsearch($version = "0.15.2", $xmx = "2048") {
       $esPath           = "${ebs1}/usr/local/${esName}"
       $esPathLink       = "/usr/local/${esBasename}"
       $esDataPath       = "${ebs1}/var/lib/${esBasename}"
+      $esLibPath        = "${esDataPath}"
       $esLogPath        = "${ebs1}/var/log/${esBasename}"
-      $esXms            = "256"
+      $esXms            = "256m"
       $esXmx            = "${xmx}"
       $cluster          = "${esBasename}"
       $esTCPPortRange   = "9300-9399"
       $esHTTPPortRange  = "9200-9299"
-      
+      $esUlimitNofile   = "32000"
+      $esUlimitMemlock  = "unlimited"
+      $esPidpath        = "/var/run"
+      $esPidfile        = "${esPidpath}/${esBasename}.pid"
+      $esJarfile        = "${esName}.jar"
+       
       # Ensure the elasticsearch user is present
       user { "$esBasename":
                ensure => "present",
@@ -31,11 +37,20 @@ class elasticsearch($version = "0.15.2", $xmx = "2048") {
                uid => 901
      }
      
-     # Set this users file handle limits (ES uses a shit ton of file handles)
-     file { "/etc/security/limits.conf":
-             source => "puppet:///elasticsearch/limits.conf",
-             require => user["$esBasename"]
+     file { "/etc/security/limits.d/${esBasename}.conf":
+            content => template("elasticsearch/elasticsearch.limits.conf.erb"),                                                                                                    
+            ensure => present,
+            owner => root,
+            group => root,
      }
+     
+#     file { "/etc/init/${esBasename}.conf":
+#          content => template("elasticsearch/upstart.elasticsearch.conf.erb"),
+#          ensure => present,
+#          owner => root,
+#          group => root,
+#          mode => 644
+#     }
 
      exec { "mkdir-ebs-mongohome":
           path => "/bin:/usr/bin",
@@ -190,6 +205,7 @@ class elasticsearch($version = "0.15.2", $xmx = "2048") {
             
       # Ensure the service is running
       service { "$esBasename":
+            enable => true,
             ensure => running,
             hasrestart => true,
             require => File["$esPath/logs"]
